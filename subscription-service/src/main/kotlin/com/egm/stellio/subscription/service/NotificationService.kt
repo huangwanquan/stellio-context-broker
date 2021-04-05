@@ -1,21 +1,23 @@
 package com.egm.stellio.subscription.service
 
 import com.egm.stellio.shared.model.*
-import com.egm.stellio.shared.util.JSON_LD_MEDIA_TYPE
 import com.egm.stellio.shared.util.JsonLdUtils
 import com.egm.stellio.shared.util.JsonLdUtils.compact
 import com.egm.stellio.shared.util.JsonLdUtils.expandJsonLdEntity
 import com.egm.stellio.shared.util.JsonLdUtils.filterJsonLdEntityOnAttributes
 import com.egm.stellio.shared.util.JsonUtils.serializeObject
+import com.egm.stellio.shared.util.buildContextLinkHeader
 import com.egm.stellio.shared.util.toKeyValues
 import com.egm.stellio.shared.util.toNgsiLdFormat
 import com.egm.stellio.subscription.firebase.FCMService
 import com.egm.stellio.subscription.model.NotificationParams
 import com.egm.stellio.subscription.model.Subscription
 import org.slf4j.LoggerFactory
-import org.springframework.http.HttpStatus
+import org.springframework.http.HttpHeaders
+import org.springframework.http.MediaType
 import org.springframework.stereotype.Service
 import org.springframework.web.reactive.function.client.WebClient
+import org.springframework.web.reactive.function.client.bodyToMono
 import reactor.core.publisher.Mono
 import java.net.URI
 
@@ -53,9 +55,10 @@ class NotificationService(
         entityId: URI,
         entity: JsonLdEntity
     ): Mono<Triple<Subscription, Notification, Boolean>> {
+        val mediaType = MediaType.valueOf(subscription.notification.endpoint.accept.accept)
         val notification = Notification(
             subscriptionId = subscription.id,
-            data = buildNotificationData(entity, subscription.notification)
+            data = buildNotificationData(entity, subscription.notification, mediaType)
         )
         val uri = subscription.notification.endpoint.uri.toString()
         logger.info("Notification is about to be sent to $uri for subscription ${subscription.id}")
@@ -63,18 +66,29 @@ class NotificationService(
             val fcmDeviceToken = subscription.notification.endpoint.getInfoValue("deviceToken")
             return callFCMSubscriber(entityId, subscription, notification, fcmDeviceToken)
         } else {
-            var request =
-                WebClient.create(uri).post() as WebClient.RequestBodySpec
-            subscription.notification.endpoint.info?.forEach {
-                request = request.header(it.key, it.value)
-            }
+            // TODO if mediaType is JSON, add a Link header pointing to the entity's contexts
+            // TODO if entity has more than one context, we need to generate a compound link
+            val request =
+                WebClient.create(uri).post().contentType(mediaType).headers {
+                    if (mediaType == MediaType.APPLICATION_JSON)
+                        it.set(HttpHeaders.LINK, buildContextLinkHeader(entity.contexts[0]))
+                    subscription.notification.endpoint.info?.forEach { endpointInfo ->
+                        it.set(endpointInfo.key, endpointInfo.value)
+                    }
+                }
             return request
                 .bodyValue(serializeObject(notification))
                 .exchange()
-                .doOnError { e -> logger.error("Failed to send notification to $uri : ${e.message}") }
+                .doOnError { e -> logger.error("Failed to send notification to $uri: ${e.message}") }
                 .map {
-                    val success = it.statusCode() == HttpStatus.OK
-                    logger.info("The notification sent has been received with ${if (success) "success" else "failure"}")
+                    val success = it.statusCode().is2xxSuccessful
+                    logger.info("The notification has been sent with ${if (success) "success" else "failure"}")
+                    if (!success) {
+                        it.bodyToMono<String>().subscribe { body ->
+                            logger.warn("Got error response status: ${it.statusCode()}")
+                            logger.warn("Got error response body: $body")
+                        }
+                    }
                     Triple(subscription, notification, success)
                 }
                 .doOnNext {
@@ -94,12 +108,13 @@ class NotificationService(
 
     private fun buildNotificationData(
         entity: JsonLdEntity,
-        params: NotificationParams
+        params: NotificationParams,
+        mediaType: MediaType
     ): List<Map<String, Any>> {
         val filteredEntity =
             filterJsonLdEntityOnAttributes(entity, params.attributes?.toSet() ?: emptySet())
         val filteredCompactedEntity =
-            compact(JsonLdEntity(filteredEntity, entity.contexts), entity.contexts, JSON_LD_MEDIA_TYPE)
+            compact(JsonLdEntity(filteredEntity, entity.contexts), entity.contexts, mediaType)
         val processedEntity = if (params.format == NotificationParams.FormatType.KEY_VALUES)
             filteredCompactedEntity.toKeyValues()
         else

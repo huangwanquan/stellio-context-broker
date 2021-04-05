@@ -1,5 +1,6 @@
 package com.egm.stellio.subscription.utils
 
+import com.egm.stellio.shared.util.JsonLdUtils.NGSILD_CORE_CONTEXT
 import com.egm.stellio.shared.util.toUri
 import com.egm.stellio.subscription.model.Endpoint
 import com.egm.stellio.subscription.model.EndpointInfo
@@ -60,6 +61,7 @@ fun gimmeRawSubscription(
             lastNotification = null,
             lastFailure = null,
             lastSuccess = null
-        )
+        ),
+        contexts = listOf(NGSILD_CORE_CONTEXT)
     )
 }

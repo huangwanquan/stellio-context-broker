@@ -13,15 +13,17 @@ object ParsingUtils {
 
     private val logger = LoggerFactory.getLogger(javaClass)
 
-    fun parseSubscription(input: String, context: List<String>): Subscription {
+    fun parseSubscription(input: String, contexts: List<String>): Subscription {
         val mapper = jacksonObjectMapper()
         val rawParsedData = mapper.readTree(input) as ObjectNode
-        if (rawParsedData.get("@context") != null)
-            rawParsedData.remove("@context")
+        if (rawParsedData.get("@context") == null) {
+            val contextNode = rawParsedData.arrayNode()
+            contexts.forEach { contextNode.add(it) }
+        }
 
         try {
             val subscription = mapper.readValue(rawParsedData.toString(), Subscription::class.java)
-            subscription.expandTypes(context)
+            subscription.expandTypes(contexts)
             return subscription
         } catch (e: Exception) {
             logger.error("Error while parsing a subscription: ${e.message}", e)
@@ -76,8 +78,8 @@ object ParsingUtils {
         }.joinToString("")
 
     fun Any.toSqlValue(columnName: String): Any? =
-        when (columnName) {
-            "watchedAttributes" -> {
+        when {
+            listOf("watchedAttributes", "contexts").contains(columnName) -> {
                 val valueAsArrayList = this as ArrayList<String>
                 if (valueAsArrayList.isEmpty())
                     null

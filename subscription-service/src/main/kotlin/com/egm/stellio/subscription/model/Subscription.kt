@@ -8,6 +8,7 @@ import com.egm.stellio.shared.util.JsonLdUtils.compactTerm
 import com.egm.stellio.shared.util.JsonUtils
 import com.egm.stellio.shared.util.toUri
 import com.fasterxml.jackson.annotation.JsonFilter
+import com.fasterxml.jackson.annotation.JsonProperty
 import org.springframework.data.annotation.Id
 import org.springframework.http.MediaType
 import java.net.URI
@@ -28,7 +29,9 @@ data class Subscription(
     val q: String? = null,
     val geoQ: GeoQuery? = null,
     val notification: NotificationParams,
-    val isActive: Boolean = true
+    val isActive: Boolean = true,
+    @JsonProperty("@context")
+    val contexts: List<String>
 ) {
     fun expandTypes(context: List<String>) {
         this.entities.forEach {

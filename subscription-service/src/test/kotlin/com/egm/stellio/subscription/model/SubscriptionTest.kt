@@ -30,7 +30,8 @@ class SubscriptionTest {
             lastNotification = null,
             lastFailure = null,
             lastSuccess = null
-        )
+        ),
+        contexts = listOf(NGSILD_CORE_CONTEXT)
     )
 
     @Test

@@ -1,5 +1,6 @@
 package com.egm.stellio.subscription.utils
 
+import com.egm.stellio.shared.util.JsonLdUtils.NGSILD_CORE_CONTEXT
 import com.egm.stellio.shared.util.toUri
 import com.egm.stellio.subscription.model.Endpoint
 import com.egm.stellio.subscription.model.EntityInfo
@@ -14,7 +15,6 @@ import org.springframework.stereotype.Component
 
 @Component
 @Profile("dev")
-
 class SubscriptionBootstrapper(
     private val subscriptionService: SubscriptionService
 ) : CommandLineRunner {
@@ -53,7 +53,8 @@ class SubscriptionBootstrapper(
                 lastNotification = null,
                 lastFailure = null,
                 lastSuccess = null
-            )
+            ),
+            contexts = listOf(NGSILD_CORE_CONTEXT)
         )
 
         subscriptionService.create(subscription, "subscription-bootstrapper")
