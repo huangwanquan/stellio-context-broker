@@ -129,7 +129,7 @@ subprojects {
     }
 
     project.ext.set("jibFromImage", "gcr.io/distroless/java:11")
-    project.ext.set("jibContainerJvmFlags", listOf("-Xms256m", "-Xmx768m"))
+    project.ext.set("jibContainerJvmFlags", listOf("-Xms2048m", "-Xmx4096m"))
     project.ext.set("jibContainerCreationTime", "USE_CURRENT_TIMESTAMP")
     project.ext.set(
         "jibContainerLabels",

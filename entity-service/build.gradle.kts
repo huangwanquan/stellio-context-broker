@@ -30,7 +30,7 @@ tasks.bootRun {
 }
 
 jib.from.image = "adoptopenjdk/openjdk11:alpine-jre"
-jib.to.image = "stellio/stellio-entity-service"
+jib.to.image = "stellio/stellio-entity-service:load"
 jib.container.entrypoint = listOf(
     "/bin/sh", "-c",
     "/database/wait-for-neo4j.sh neo4j:7687 -t \$NEO4J_WAIT_TIMEOUT -- " +
