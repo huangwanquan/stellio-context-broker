@@ -32,8 +32,8 @@ class ObservationEventListener(
     fun processMessage(content: String) {
         when (val observationEvent = deserializeAs<EntityEvent>(content)) {
             is EntityCreateEvent -> handleEntityCreate(observationEvent)
-            is AttributeUpdateEvent -> handleAttributeUpdateEvent(observationEvent)
-            is AttributeAppendEvent -> handleAttributeAppendEvent(observationEvent)
+            is AttributeUpdateEvent -> handleAttributeUpdateEvent(observationEvent, true)
+            is AttributeAppendEvent -> handleAttributeAppendEvent(observationEvent, true)
             else -> logger.warn("Observation event ${observationEvent.operationType} not handled.")
         }
     }
@@ -69,7 +69,11 @@ class ObservationEventListener(
 
     @KafkaListener(topics = ["cim.eqp.Transmitter.MSR"], groupId = "entity-eqp-transmitter-msr")
     fun processMsrTransmitter(content: String) {
-        processMessage(content)
+        when (val observationEvent = deserializeAs<EntityEvent>(content)) {
+            is AttributeUpdateEvent -> handleAttributeUpdateEvent(observationEvent, false)
+            is AttributeAppendEvent -> handleAttributeAppendEvent(observationEvent, false)
+            else -> logger.warn("Observation event ${observationEvent.operationType} not handled.")
+        }
     }
 
     fun handleEntityCreate(observationEvent: EntityCreateEvent) {
@@ -91,7 +95,7 @@ class ObservationEventListener(
         )
     }
 
-    fun handleAttributeUpdateEvent(observationEvent: AttributeUpdateEvent) {
+    fun handleAttributeUpdateEvent(observationEvent: AttributeUpdateEvent, doPublish: Boolean) {
         val expandedPayload = parseAndExpandAttributeFragment(
             observationEvent.attributeName,
             observationEvent.operationPayload,
@@ -109,24 +113,26 @@ class ObservationEventListener(
             return
         }
 
-        val updatedEntity = entityService.getFullEntityById(observationEvent.entityId, true)
-        if (updatedEntity == null)
-            logger.warn("Unable to retrieve entity ${observationEvent.entityId} from DB, not sending to Kafka")
-        else
-            entityEventService.publishEntityEvent(
-                AttributeUpdateEvent(
-                    observationEvent.entityId,
-                    observationEvent.attributeName,
-                    observationEvent.datasetId,
-                    observationEvent.operationPayload,
-                    compactAndSerialize(updatedEntity, observationEvent.contexts, MediaType.APPLICATION_JSON),
-                    observationEvent.contexts
-                ),
-                updatedEntity.type
-            )
+        if (doPublish) {
+            val updatedEntity = entityService.getFullEntityById(observationEvent.entityId, true)
+            if (updatedEntity == null)
+                logger.warn("Unable to retrieve entity ${observationEvent.entityId} from DB, not sending to Kafka")
+            else
+                entityEventService.publishEntityEvent(
+                    AttributeUpdateEvent(
+                        observationEvent.entityId,
+                        observationEvent.attributeName,
+                        observationEvent.datasetId,
+                        observationEvent.operationPayload,
+                        compactAndSerialize(updatedEntity, observationEvent.contexts, MediaType.APPLICATION_JSON),
+                        observationEvent.contexts
+                    ),
+                    updatedEntity.type
+                )
+        }
     }
 
-    fun handleAttributeAppendEvent(observationEvent: AttributeAppendEvent) {
+    fun handleAttributeAppendEvent(observationEvent: AttributeAppendEvent, doPublish: Boolean) {
         val expandedPayload = parseAndExpandAttributeFragment(
             observationEvent.attributeName,
             observationEvent.operationPayload,
@@ -145,9 +151,11 @@ class ObservationEventListener(
                 return
             }
 
-            entityEventService.publishAttributeAppend(
-                observationEvent, updateResult.updated[0].updateOperationResult
-            )
+            if (doPublish) {
+                entityEventService.publishAttributeAppend(
+                    observationEvent, updateResult.updated[0].updateOperationResult
+                )
+            }
         } catch (e: BadRequestDataException) {
             logger.error(e.message)
             return

@@ -52,6 +52,15 @@ class EntityEventListenerService(
         }
     }
 
+    @KafkaListener(topics = ["cim.eqp.Transmitter.MSR"], groupId = "search-eqp-transmitter-msr")
+    fun processMsrTransmitter(content: String) {
+        when (val observationEvent = deserializeAs<EntityEvent>(content)) {
+            is AttributeUpdateEvent -> handleAttributeUpdateEvent(observationEvent)
+            is AttributeAppendEvent -> handleAttributeAppendEvent(observationEvent)
+            else -> logger.warn("Observation event ${observationEvent.operationType} not handled.")
+        }
+    }
+
     private fun handleEntityCreateEvent(entityCreateEvent: EntityCreateEvent) =
         try {
             val operationPayload = addContextToElement(entityCreateEvent.operationPayload, entityCreateEvent.contexts)
