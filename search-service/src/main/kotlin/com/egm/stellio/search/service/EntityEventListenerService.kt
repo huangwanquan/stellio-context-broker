@@ -286,25 +286,20 @@ class EntityEventListenerService(
                     jsonNode = attributeValuesNode
                 )
 
-                temporalEntityAttributeService.create(temporalEntityAttribute).zipWhen {
-                    attributeInstanceService.create(attributeInstance).then(
-                        temporalEntityAttributeService.updateEntityPayload(
-                            entityId,
-                            serializeObject(compactedJsonLdEntity)
-                        )
+                temporalEntityAttributeService.upsertAndCreateAttributeInstance(
+                    temporalEntityAttribute, attributeInstance, compactedJsonLdEntity
+                )
+                .doOnError {
+                    logger.error(
+                        "Failed to persist new temporal entity attribute for $entityId " +
+                            "with attribute instance $expandedAttributeName, ignoring it (${it.message})"
                     )
-                }
-                    .doOnError {
-                        logger.error(
-                            "Failed to persist new temporal entity attribute for $entityId " +
-                                "with attribute instance $expandedAttributeName, ignoring it (${it.message})"
-                        )
-                    }.doOnNext {
-                        logger.debug(
-                            "Created new temporal entity attribute for $entityId " +
-                                "with attribute instance $expandedAttributeName"
-                        )
-                    }.subscribe()
+                }.doOnNext {
+                    logger.debug(
+                        "Created new temporal entity attribute for $entityId " +
+                            "with attribute instance $expandedAttributeName"
+                    )
+                }.subscribe()
             }
         }
     }

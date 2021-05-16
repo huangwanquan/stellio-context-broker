@@ -10,6 +10,7 @@ import com.egm.stellio.search.model.AttributeMetadata
 import com.egm.stellio.search.model.TemporalEntityAttribute
 import com.egm.stellio.search.util.valueToDoubleOrNull
 import com.egm.stellio.search.util.valueToStringOrNull
+import com.egm.stellio.shared.model.CompactedJsonLdEntity
 import com.egm.stellio.shared.model.NgsiLdAttributeInstance
 import com.egm.stellio.shared.model.NgsiLdGeoPropertyInstance
 import com.egm.stellio.shared.model.NgsiLdPropertyInstance
@@ -29,6 +30,8 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
+import reactor.kotlin.core.publisher.switchIfEmpty
+import reactor.util.function.Tuple2
 import java.net.URI
 import java.util.UUID
 
@@ -59,6 +62,32 @@ class TemporalEntityAttributeService(
             .bind("dataset_id", temporalEntityAttribute.datasetId)
             .fetch()
             .rowsUpdated()
+            .onErrorReturn(-1)
+
+    @Transactional
+    fun upsertAndCreateAttributeInstance(
+        temporalEntityAttribute: TemporalEntityAttribute,
+        attributeInstance: AttributeInstance,
+        compactedJsonLdEntity: CompactedJsonLdEntity
+    ): Mono<Tuple2<UUID, Int>> =
+        getForEntityAndAttribute(
+            temporalEntityAttribute.entityId,
+            temporalEntityAttribute.attributeName,
+            temporalEntityAttribute.datasetId)
+            .switchIfEmpty {
+                logger.debug("Attribute ${temporalEntityAttribute.attributeName} " +
+                    "of ${temporalEntityAttribute.entityId} does not exist yet, creating it")
+                create(temporalEntityAttribute)
+                    .map { temporalEntityAttribute.id }
+        }.zipWhen {
+            attributeInstanceService.create(attributeInstance.copy(temporalEntityAttribute = it))
+                .then(
+                    updateEntityPayload(
+                        temporalEntityAttribute.entityId,
+                        JsonUtils.serializeObject(compactedJsonLdEntity)
+                    )
+                )
+        }
 
     internal fun createEntityPayload(entityId: URI, entityPayload: String?): Mono<Int> =
         if (applicationProperties.entity.storePayloads)
