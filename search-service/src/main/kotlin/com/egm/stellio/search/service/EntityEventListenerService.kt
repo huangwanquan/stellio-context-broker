@@ -2,15 +2,20 @@ package com.egm.stellio.search.service
 
 import arrow.core.Invalid
 import arrow.core.Valid
-import arrow.core.Validated
-import arrow.core.invalid
-import arrow.core.valid
 import com.egm.stellio.search.model.AttributeInstance
-import com.egm.stellio.search.model.AttributeMetadata
 import com.egm.stellio.search.model.TemporalEntityAttribute
-import com.egm.stellio.search.util.valueToDoubleOrNull
-import com.egm.stellio.search.util.valueToStringOrNull
-import com.egm.stellio.shared.model.*
+import com.egm.stellio.search.util.NgsiLdEventParsingUtils.toTemporalAttributeMetadata
+import com.egm.stellio.shared.model.AttributeAppendEvent
+import com.egm.stellio.shared.model.AttributeDeleteAllInstancesEvent
+import com.egm.stellio.shared.model.AttributeDeleteEvent
+import com.egm.stellio.shared.model.AttributeReplaceEvent
+import com.egm.stellio.shared.model.AttributeUpdateEvent
+import com.egm.stellio.shared.model.BadRequestDataException
+import com.egm.stellio.shared.model.EntityCreateEvent
+import com.egm.stellio.shared.model.EntityDeleteEvent
+import com.egm.stellio.shared.model.EntityEvent
+import com.egm.stellio.shared.model.InvalidRequestException
+import com.egm.stellio.shared.model.getType
 import com.egm.stellio.shared.util.JsonLdUtils.addContextToElement
 import com.egm.stellio.shared.util.JsonLdUtils.addContextsToEntity
 import com.egm.stellio.shared.util.JsonLdUtils.compactTerm
@@ -20,7 +25,6 @@ import com.egm.stellio.shared.util.JsonUtils.deserializeAs
 import com.egm.stellio.shared.util.JsonUtils.serializeObject
 import com.egm.stellio.shared.util.RECEIVED_NON_PARSEABLE_ENTITY
 import com.egm.stellio.shared.util.extractAttributeInstanceFromCompactedEntity
-import com.egm.stellio.shared.util.toUri
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.ObjectNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
@@ -29,7 +33,6 @@ import org.springframework.kafka.annotation.KafkaListener
 import org.springframework.stereotype.Component
 import reactor.core.publisher.Mono
 import java.net.URI
-import java.time.ZonedDateTime
 
 @Component
 class EntityEventListenerService(
@@ -49,15 +52,6 @@ class EntityEventListenerService(
             is AttributeUpdateEvent -> handleAttributeUpdateEvent(entityEvent)
             is AttributeDeleteEvent -> handleAttributeDeleteEvent(entityEvent)
             is AttributeDeleteAllInstancesEvent -> handleAttributeDeleteAllInstancesEvent(entityEvent)
-        }
-    }
-
-    @KafkaListener(topics = ["cim.eqp.Transmitter.MSR"], groupId = "search-eqp-transmitter-msr")
-    fun processMsrTransmitter(content: String) {
-        when (val observationEvent = deserializeAs<EntityEvent>(content)) {
-            is AttributeUpdateEvent -> handleAttributeUpdateEvent(observationEvent)
-            is AttributeAppendEvent -> handleAttributeAppendEvent(observationEvent)
-            else -> logger.warn("Observation event ${observationEvent.operationType} not handled.")
         }
     }
 
@@ -286,51 +280,26 @@ class EntityEventListenerService(
                     jsonNode = attributeValuesNode
                 )
 
-                temporalEntityAttributeService.upsertAndCreateAttributeInstance(
-                    temporalEntityAttribute, attributeInstance, compactedJsonLdEntity
-                )
-                .doOnError {
-                    logger.error(
-                        "Failed to persist new temporal entity attribute for $entityId " +
-                            "with attribute instance $expandedAttributeName, ignoring it (${it.message})"
+                temporalEntityAttributeService.create(temporalEntityAttribute).zipWhen {
+                    attributeInstanceService.create(attributeInstance).then(
+                        temporalEntityAttributeService.updateEntityPayload(
+                            entityId,
+                            serializeObject(compactedJsonLdEntity)
+                        )
                     )
-                }.doOnNext {
-                    logger.debug(
-                        "Created new temporal entity attribute for $entityId " +
-                            "with attribute instance $expandedAttributeName"
-                    )
-                }.subscribe()
-            }
-        }
-    }
-
-    internal fun toTemporalAttributeMetadata(jsonNode: JsonNode): Validated<String, AttributeMetadata> {
-        val attributeTypeAsText = jsonNode["type"].asText()
-        val attributeType = kotlin.runCatching {
-            TemporalEntityAttribute.AttributeType.valueOf(attributeTypeAsText)
-        }.getOrNull() ?: return "Unsupported attribute type: $attributeTypeAsText".invalid()
-        val attributeValue = when (attributeType) {
-            TemporalEntityAttribute.AttributeType.Relationship -> Pair(jsonNode["object"].asText(), null)
-            TemporalEntityAttribute.AttributeType.Property -> {
-                val rawAttributeValue = jsonNode["value"]
-                when {
-                    rawAttributeValue == null -> return "Unable to get a value from attribute: $jsonNode".invalid()
-                    rawAttributeValue.isNumber -> Pair(null, valueToDoubleOrNull(rawAttributeValue.asDouble()))
-                    else -> Pair(valueToStringOrNull(rawAttributeValue.asText()), null)
                 }
+                    .doOnError {
+                        logger.error(
+                            "Failed to persist new temporal entity attribute for $entityId " +
+                                "with attribute instance $expandedAttributeName, ignoring it (${it.message})"
+                        )
+                    }.doOnNext {
+                        logger.debug(
+                            "Created new temporal entity attribute for $entityId " +
+                                "with attribute instance $expandedAttributeName"
+                        )
+                    }.subscribe()
             }
         }
-        val attributeValueType =
-            if (attributeValue.second != null) TemporalEntityAttribute.AttributeValueType.MEASURE
-            else TemporalEntityAttribute.AttributeValueType.ANY
-
-        return AttributeMetadata(
-            measuredValue = attributeValue.second,
-            value = attributeValue.first,
-            valueType = attributeValueType,
-            datasetId = jsonNode["datasetId"]?.asText()?.toUri(),
-            type = attributeType,
-            observedAt = ZonedDateTime.parse(jsonNode["observedAt"].asText())
-        ).valid()
     }
 }

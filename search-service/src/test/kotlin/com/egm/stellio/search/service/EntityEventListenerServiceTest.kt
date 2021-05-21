@@ -1,6 +1,7 @@
 package com.egm.stellio.search.service
 
 import com.egm.stellio.search.model.TemporalEntityAttribute
+import com.egm.stellio.search.util.NgsiLdEventParsingUtils.toTemporalAttributeMetadata
 import com.egm.stellio.shared.model.EventsType
 import com.egm.stellio.shared.util.JsonLdUtils.EGM_BASE_CONTEXT_URL
 import com.egm.stellio.shared.util.JsonLdUtils.NGSILD_CORE_CONTEXT
@@ -20,7 +21,6 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.test.context.ActiveProfiles
 import reactor.core.publisher.Mono
-import reactor.util.function.Tuples
 import java.time.ZonedDateTime
 import java.util.UUID
 
@@ -111,7 +111,7 @@ class EntityEventListenerServiceTest {
             }                
             """.trimIndent()
         val jsonNode = jacksonObjectMapper().readTree(operationPayload)
-        val result = entityEventListenerService.toTemporalAttributeMetadata(jsonNode)
+        val result = toTemporalAttributeMetadata(jsonNode)
         result.bimap(
             {
                 assertEquals(
@@ -135,7 +135,7 @@ class EntityEventListenerServiceTest {
             }                
             """.trimIndent()
         val jsonNode = jacksonObjectMapper().readTree(operationPayload)
-        val result = entityEventListenerService.toTemporalAttributeMetadata(jsonNode)
+        val result = toTemporalAttributeMetadata(jsonNode)
         result.bimap(
             {
                 assertEquals(
@@ -162,7 +162,7 @@ class EntityEventListenerServiceTest {
             }                
             """.trimIndent()
         val jsonNode = jacksonObjectMapper().readTree(operationPayload)
-        val result = entityEventListenerService.toTemporalAttributeMetadata(jsonNode)
+        val result = toTemporalAttributeMetadata(jsonNode)
         result.bimap(
             {
                 fail<String>("Expecting a valid result, got an invalid one: $it")
@@ -357,21 +357,26 @@ class EntityEventListenerServiceTest {
             """.trimIndent()
         val content = prepareAttributeEventPayload(EventsType.ATTRIBUTE_APPEND, eventPayload, updatedEntityNumericValue)
 
-        every {
-            temporalEntityAttributeService.upsertAndCreateAttributeInstance(any(), any(), any())
-        } answers { Mono.just(Tuples.of(UUID.randomUUID(), 1)) }
+        every { temporalEntityAttributeService.create(any()) } returns Mono.just(1)
+        every { attributeInstanceService.create(any()) } returns Mono.just(1)
+        every { temporalEntityAttributeService.updateEntityPayload(any(), any()) } returns Mono.just(1)
 
         entityEventListenerService.processMessage(content)
 
         verify {
-            temporalEntityAttributeService.upsertAndCreateAttributeInstance(
+            temporalEntityAttributeService.create(
                 match {
                     it.entityId == fishContainmentId.toUri() &&
                         it.type == "https://uri.etsi.org/ngsi-ld/default-context/FishContainment" &&
                         it.attributeName == "https://uri.etsi.org/ngsi-ld/default-context/totalDissolvedSolids" &&
                         it.attributeValueType == TemporalEntityAttribute.AttributeValueType.MEASURE &&
                         it.datasetId == null
-                },
+                }
+            )
+        }
+
+        verify {
+            attributeInstanceService.create(
                 match {
                     val payload = JsonUtils.serializeObject(
                         JsonUtils.deserializeObject(it.payload).filterKeys { it != "instanceId" }
@@ -380,12 +385,18 @@ class EntityEventListenerServiceTest {
                         it.value == null &&
                         it.measuredValue == 33869.0 &&
                         payload.matchContent(expectedAttributeInstance)
-                },
-                any()
+                }
             )
         }
 
-        confirmVerified(temporalEntityAttributeService)
+        verify {
+            temporalEntityAttributeService.updateEntityPayload(
+                eq(fishContainmentId.toUri()),
+                match { it.contains(fishContainmentId) }
+            )
+        }
+
+        confirmVerified(attributeInstanceService, temporalEntityAttributeService)
     }
 
     @Test
@@ -401,31 +412,42 @@ class EntityEventListenerServiceTest {
             """.trimIndent()
         val content = prepareAttributeEventPayload(EventsType.ATTRIBUTE_APPEND, eventPayload)
 
-        every {
-            temporalEntityAttributeService.upsertAndCreateAttributeInstance(any(), any(), any())
-        } answers { Mono.just(Tuples.of(UUID.randomUUID(), 1)) }
+        every { temporalEntityAttributeService.create(any()) } returns Mono.just(1)
+        every { attributeInstanceService.create(any()) } returns Mono.just(1)
+        every { temporalEntityAttributeService.updateEntityPayload(any(), any()) } returns Mono.just(1)
 
         entityEventListenerService.processMessage(content)
 
         verify {
-            temporalEntityAttributeService.upsertAndCreateAttributeInstance(
+            temporalEntityAttributeService.create(
                 match {
                     it.entityId == fishContainmentId.toUri() &&
                         it.type == "https://uri.etsi.org/ngsi-ld/default-context/FishContainment" &&
                         it.attributeName == "https://uri.etsi.org/ngsi-ld/default-context/totalDissolvedSolids" &&
                         it.attributeValueType == TemporalEntityAttribute.AttributeValueType.ANY &&
                         it.datasetId == "urn:ngsi-ld:Dataset:totalDissolvedSolids:01".toUri()
-                },
+                }
+            )
+        }
+
+        verify {
+            attributeInstanceService.create(
                 match {
                     it.observedAt == ZonedDateTime.parse("2020-03-12T08:33:38Z") &&
                         it.value == "some textual value" &&
                         it.measuredValue == null
-                },
-                any()
+                }
             )
         }
 
-        confirmVerified(temporalEntityAttributeService)
+        verify {
+            temporalEntityAttributeService.updateEntityPayload(
+                eq(fishContainmentId.toUri()),
+                match { it.contains(fishContainmentId) }
+            )
+        }
+
+        confirmVerified(attributeInstanceService, temporalEntityAttributeService)
     }
 
     @Test

@@ -23,4 +23,24 @@ data class TemporalEntityAttribute(
         Property,
         Relationship
     }
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+
+        other as TemporalEntityAttribute
+
+        if (entityId != other.entityId) return false
+        if (attributeName != other.attributeName) return false
+        if (datasetId != other.datasetId) return false
+
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = entityId.hashCode()
+        result = 31 * result + attributeName.hashCode()
+        result = 31 * result + (datasetId?.hashCode() ?: 0)
+        return result
+    }
 }

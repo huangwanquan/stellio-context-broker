@@ -42,7 +42,35 @@ class AttributeInstanceService(
             .bind("payload", Json.of(attributeInstance.payload))
             .fetch()
             .rowsUpdated()
+            .thenReturn(1)
             .onErrorReturn(-1)
+
+    @Transactional
+    fun createMulti(attributesInstances: List<AttributeInstance>): Mono<Int> {
+        val query = StringBuilder(
+            """
+            INSERT INTO attribute_instance 
+                (observed_at, measured_value, value, temporal_entity_attribute, instance_id, payload)
+            VALUES 
+            """.trimIndent()
+        )
+
+        val rowsValues = attributesInstances.joinToString(",") { attributeInstance ->
+            """
+                ('${attributeInstance.observedAt}', ${attributeInstance.measuredValue},
+                 '${attributeInstance.value.orEmpty()}', '${attributeInstance.temporalEntityAttribute}',
+                 '${attributeInstance.instanceId}', '${attributeInstance.payload}')
+            """.trimIndent()
+        }
+        query.append(rowsValues)
+        query.append(" ON CONFLICT DO NOTHING")
+
+        return databaseClient.execute(query.toString())
+            .fetch()
+            .rowsUpdated()
+            .thenReturn(attributesInstances.size)
+            .onErrorReturn(-1)
+    }
 
     // TODO not totally compatible with the specification
     // it should accept an array of attribute instances

@@ -10,7 +10,6 @@ import com.egm.stellio.search.model.AttributeMetadata
 import com.egm.stellio.search.model.TemporalEntityAttribute
 import com.egm.stellio.search.util.valueToDoubleOrNull
 import com.egm.stellio.search.util.valueToStringOrNull
-import com.egm.stellio.shared.model.CompactedJsonLdEntity
 import com.egm.stellio.shared.model.NgsiLdAttributeInstance
 import com.egm.stellio.shared.model.NgsiLdGeoPropertyInstance
 import com.egm.stellio.shared.model.NgsiLdPropertyInstance
@@ -31,7 +30,6 @@ import org.springframework.transaction.annotation.Transactional
 import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
 import reactor.kotlin.core.publisher.switchIfEmpty
-import reactor.util.function.Tuple2
 import java.net.URI
 import java.util.UUID
 
@@ -62,32 +60,61 @@ class TemporalEntityAttributeService(
             .bind("dataset_id", temporalEntityAttribute.datasetId)
             .fetch()
             .rowsUpdated()
+            .thenReturn(1)
             .onErrorReturn(-1)
 
     @Transactional
-    fun upsertAndCreateAttributeInstance(
-        temporalEntityAttribute: TemporalEntityAttribute,
-        attributeInstance: AttributeInstance,
-        compactedJsonLdEntity: CompactedJsonLdEntity
-    ): Mono<Tuple2<UUID, Int>> =
-        getForEntityAndAttribute(
-            temporalEntityAttribute.entityId,
-            temporalEntityAttribute.attributeName,
-            temporalEntityAttribute.datasetId)
-            .switchIfEmpty {
-                logger.debug("Attribute ${temporalEntityAttribute.attributeName} " +
-                    "of ${temporalEntityAttribute.entityId} does not exist yet, creating it")
-                create(temporalEntityAttribute)
-                    .map { temporalEntityAttribute.id }
-        }.zipWhen {
-            attributeInstanceService.create(attributeInstance.copy(temporalEntityAttribute = it))
-                .then(
-                    updateEntityPayload(
-                        temporalEntityAttribute.entityId,
-                        JsonUtils.serializeObject(compactedJsonLdEntity)
-                    )
+    fun createSql(temporalEntityAttribute: TemporalEntityAttribute): Mono<Int> {
+        val query =
+            if (temporalEntityAttribute.datasetId != null)
+                """
+                    INSERT INTO temporal_entity_attribute
+                        (id, entity_id, type, attribute_name, attribute_type, attribute_value_type, dataset_id)
+                    VALUES ('${temporalEntityAttribute.id}', '${temporalEntityAttribute.entityId}',
+                            '${temporalEntityAttribute.type}', '${temporalEntityAttribute.attributeName}',
+                            '${temporalEntityAttribute.attributeType}', '${temporalEntityAttribute.attributeValueType}',
+                            '${temporalEntityAttribute.datasetId}')
+                """
+            else
+                """
+                    INSERT INTO temporal_entity_attribute
+                        (id, entity_id, type, attribute_name, attribute_type, attribute_value_type)
+                    VALUES ('${temporalEntityAttribute.id}', '${temporalEntityAttribute.entityId}',
+                            '${temporalEntityAttribute.type}', '${temporalEntityAttribute.attributeName}',
+                            '${temporalEntityAttribute.attributeType}', '${temporalEntityAttribute.attributeValueType}')
+                """
+
+        return databaseClient.execute(query)
+            .fetch()
+            .rowsUpdated()
+            .thenReturn(1)
+            .onErrorReturn(-1)
+    }
+
+    @Transactional
+    fun handleBatchAttributeAppend(
+        batchPayload: Map<TemporalEntityAttribute, List<AttributeInstance>>
+    ): Mono<Int> {
+        return Flux.fromIterable(batchPayload.entries)
+            .flatMap { entry ->
+                getForEntityAndAttribute(
+                    entry.key.entityId,
+                    entry.key.attributeName,
+                    entry.key.datasetId
                 )
-        }
+                    .switchIfEmpty {
+                        createSql(entry.key)
+                            .map { entry.key.id }
+                    }
+                    .map { uuid ->
+                        entry.value.map { it.copy(temporalEntityAttribute = uuid) }
+                    }
+            }.collectList()
+            .map { it.flatten() }
+            .flatMap {
+                attributeInstanceService.createMulti(it)
+            }
+    }
 
     internal fun createEntityPayload(entityId: URI, entityPayload: String?): Mono<Int> =
         if (applicationProperties.entity.storePayloads)
