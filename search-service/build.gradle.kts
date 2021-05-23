@@ -34,7 +34,7 @@ tasks.bootRun {
 
 jib.from.image = project.ext["jibFromImage"].toString()
 jib.to.image = "stellio/stellio-search-service:load"
-jib.container.jvmFlags = project.ext["jibContainerJvmFlags"] as List<String>
+jib.container.jvmFlags = listOf("-Xms2048m", "-Xmx6144m")
 jib.container.ports = listOf("8083")
 jib.container.creationTime = project.ext["jibContainerCreationTime"].toString()
 jib.container.labels = project.ext["jibContainerLabels"] as Map<String, String>
