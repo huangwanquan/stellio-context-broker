@@ -62,19 +62,19 @@ class ObservationEventListener(
         processMessage(content)
     }
 
-    @KafkaListener(topics = ["cim.eqp.Transmitter.ALR"], groupId = "entity-eqp-transmitter-alr")
-    fun processAlrTransmitter(content: String) {
-        processMessage(content)
-    }
+    // @KafkaListener(topics = ["cim.eqp.Transmitter.ALR"], groupId = "entity-eqp-transmitter-alr")
+    // fun processAlrTransmitter(content: String) {
+    //     processMessage(content)
+    // }
 
-    @KafkaListener(topics = ["cim.eqp.Transmitter.MSR"], groupId = "entity-eqp-transmitter-msr")
-    fun processMsrTransmitter(content: String) {
-        when (val observationEvent = deserializeAs<EntityEvent>(content)) {
-            is AttributeUpdateEvent -> handleAttributeUpdateEvent(observationEvent, false)
-            is AttributeAppendEvent -> handleAttributeAppendEvent(observationEvent, false)
-            else -> logger.warn("Observation event ${observationEvent.operationType} not handled.")
-        }
-    }
+    // @KafkaListener(topics = ["cim.eqp.Transmitter.MSR"], groupId = "entity-eqp-transmitter-msr")
+    // fun processMsrTransmitter(content: String) {
+    //     when (val observationEvent = deserializeAs<EntityEvent>(content)) {
+    //         is AttributeUpdateEvent -> handleAttributeUpdateEvent(observationEvent, false)
+    //         is AttributeAppendEvent -> handleAttributeAppendEvent(observationEvent, false)
+    //         else -> logger.warn("Observation event ${observationEvent.operationType} not handled.")
+    //     }
+    // }
 
     fun handleEntityCreate(observationEvent: EntityCreateEvent) {
         val ngsiLdEntity = JsonLdUtils.expandJsonLdEntity(
