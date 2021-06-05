@@ -15,7 +15,7 @@ class BatchMeasureListener(
     private val logger = LoggerFactory.getLogger(javaClass)
 
     @KafkaListener(
-        topics = ["cim.eqp.Transmitter.MSR"],
+        topics = ["cim.eqp.Transmitter.MSR", "cim.eqp.Transmitter.ALR"],
         groupId = "search-eqp-transmitter-msr",
         containerFactory = "batchFactory"
     )
