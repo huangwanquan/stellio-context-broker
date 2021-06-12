@@ -19,6 +19,8 @@ spring:
             jwk-set-uri: http://127.0.0.1:8081/auth/realms/stellio/protocol/openid-connect/certs
   cloud:
     gateway:
+      httpclient:
+        response-timeout: 300s
       routes:
         - id: entity_service_actuator
           uri: http://entity-service:8082
