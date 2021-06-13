@@ -16,6 +16,8 @@ import com.egm.stellio.shared.util.JsonUtils.deserializeAs
 import org.slf4j.LoggerFactory
 import org.springframework.http.MediaType
 import org.springframework.kafka.annotation.KafkaListener
+import org.springframework.kafka.support.KafkaHeaders
+import org.springframework.messaging.handler.annotation.Header
 import org.springframework.stereotype.Component
 
 @Component
@@ -34,6 +36,40 @@ class ObservationEventListener(
             is AttributeAppendEvent -> handleAttributeAppendEvent(observationEvent)
             else -> logger.warn("Observation event ${observationEvent.operationType} not handled.")
         }
+    }
+
+    @KafkaListener(topics = ["cim.eqp.Client"], groupId = "entity-eqp-client")
+    fun processEqpClient(content: String, @Header(KafkaHeaders.OFFSET) offset: Long) {
+        logger.debug("Reading at offset $offset on Client topic")
+        processMessage(content)
+    }
+
+    @KafkaListener(topics = ["cim.eqp.ServicePoint"], groupId = "entity-eqp-servicePoint")
+    fun processEqpServicePoint(content: String, @Header(KafkaHeaders.OFFSET) offset: Long) {
+        logger.debug("Reading at offset $offset on ServicePoint topic")
+        processMessage(content)
+    }
+
+    @KafkaListener(topics = ["cim.eqp.WaterMeter"], groupId = "entity-eqp-waterMeter")
+    fun processEqpWaterMeter(content: String, @Header(KafkaHeaders.OFFSET) offset: Long) {
+        logger.debug("Reading at offset $offset on WaterMeter topic")
+        processMessage(content)
+    }
+
+    @KafkaListener(topics = ["cim.eqp.Transmitter"], groupId = "entity-eqp-transmitter")
+    fun processEqpTransmitter(content: String, @Header(KafkaHeaders.OFFSET) offset: Long) {
+        logger.debug("Reading at offset $offset on Transmitter topic")
+        processMessage(content)
+    }
+
+    @KafkaListener(topics = ["cim.eqp.Transmitter.ALR"], groupId = "entity-eqp-transmitter-alr")
+    fun processAlrTransmitter(content: String) {
+        processMessage(content)
+    }
+
+    @KafkaListener(topics = ["cim.eqp.Transmitter.MSR"], groupId = "entity-eqp-transmitter-msr")
+    fun processMsrTransmitter(content: String) {
+        processMessage(content)
     }
 
     fun handleEntityCreate(observationEvent: EntityCreateEvent) {
