@@ -145,4 +145,7 @@ class Neo4jAuthorizationService(
             entitiesId
         )
     }
+
+    override fun removeUserRightsOnEntity(entityId: URI, subjectId: URI) =
+        neo4jAuthorizationRepository.removeUserRightsOnEntity(subjectId, entityId)
 }

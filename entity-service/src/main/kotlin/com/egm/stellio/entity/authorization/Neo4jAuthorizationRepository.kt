@@ -155,4 +155,23 @@ class Neo4jAuthorizationRepository(
             (it["id"] as String).toUri()
         }
     }
+
+    fun removeUserRightsOnEntity(
+        subjectId: URI,
+        targetId: URI
+    ): Int {
+        val matchQuery =
+            """
+            MATCH (subject:Entity { id: ${'$'}entityId })-[:HAS_OBJECT]-(relNode)
+                    -[]->(target:Entity { id: ${'$'}targetId })
+            DETACH DELETE relNode
+            """.trimIndent()
+
+        val parameters = mapOf(
+            "entityId" to subjectId,
+            "targetId" to targetId
+        )
+
+        return session.query(matchQuery, parameters).queryStatistics().nodesDeleted
+    }
 }
