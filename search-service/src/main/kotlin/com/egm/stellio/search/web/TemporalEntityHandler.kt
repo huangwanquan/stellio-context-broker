@@ -6,6 +6,7 @@ import com.egm.stellio.search.model.TemporalQuery
 import com.egm.stellio.search.service.AttributeInstanceService
 import com.egm.stellio.search.service.EntityService
 import com.egm.stellio.search.service.QueryService
+import com.egm.stellio.search.service.SubjectAccessRightsService
 import com.egm.stellio.search.service.TemporalEntityAttributeService
 import com.egm.stellio.shared.model.*
 import com.egm.stellio.shared.util.*
@@ -16,6 +17,7 @@ import com.egm.stellio.shared.util.JsonLdUtils.expandJsonLdEntity
 import com.egm.stellio.shared.util.JsonLdUtils.expandJsonLdFragment
 import com.egm.stellio.shared.util.JsonLdUtils.expandValueAsMap
 import com.egm.stellio.shared.util.JsonUtils.serializeObject
+import com.egm.stellio.shared.web.extractSubjectOrEmpty
 import kotlinx.coroutines.reactive.awaitFirst
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
@@ -34,7 +36,8 @@ class TemporalEntityHandler(
     private val attributeInstanceService: AttributeInstanceService,
     private val temporalEntityAttributeService: TemporalEntityAttributeService,
     private val entityService: EntityService,
-    private val queryService: QueryService
+    private val queryService: QueryService,
+    private val subjectAccessRightsService: SubjectAccessRightsService
 ) {
 
     /**
@@ -104,6 +107,13 @@ class TemporalEntityHandler(
         @PathVariable entityId: String,
         @RequestParam params: MultiValueMap<String, String>
     ): ResponseEntity<*> {
+        val userId = extractSubjectOrEmpty().awaitFirst()
+
+        val canReadEntity =
+            subjectAccessRightsService.hasReadRoleOnEntity(UUID.fromString(userId), entityId.toUri()).awaitFirst()
+        if (!canReadEntity)
+            throw AccessDeniedException("User forbidden read access to entity $entityId")
+
         val withTemporalValues =
             hasValueInOptionsParam(Optional.ofNullable(params.getFirst("options")), OptionsParamValue.TEMPORAL_VALUES)
         val contextLink = getContextFromLinkHeaderOrDefault(httpHeaders)
